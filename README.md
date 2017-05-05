@@ -2,9 +2,9 @@
 Converts a PCAP file to a PANDAS or SFRAME data frame
 
 ### Requirements
-Tshark
-PANDAS
-SFRAME (optional)
+Tshark<br>
+PANDAS<br>
+SFRAME (optional)<br>
 
 This script creates a dataframe out of the PCAP for the specified protocol.
 
