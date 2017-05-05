@@ -1,6 +1,9 @@
 # pcap2frame
 Converts a PCAP file to a PANDAS or SFRAME data frame
 
+### Requirements
+Tshark
+
 This script creates a dataframe out of the PCAP for the specified protocol.
 
 pcap2frame.py --h<br>
