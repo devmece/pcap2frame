@@ -37,30 +37,30 @@ getUtc = lambda x: datetime.utcfromtimestamp(x)
 
 protocolFields = {
         "tcp" : ['frame','protocol','source_ip','source_port','dest_ip',\
-        'dest_port','frame_length','tcp_flag','date','time'],
+        'dest_port','frame_length','tcp_flag','data','date','time'],
 
         "udp" : ['frame','protocol','source_ip','source_port','dest_ip',\
-        'dest_port','frame_length','date','time'],
+        'dest_port','frame_length','info','data','date','time'],
 
         "icmp" : ['frame','protocol','source_ip','dest_ip','icmp_type',\
-        'icmp_code','icmp_ident','frame_length','date','time','icmp_seq_be','icmp_seq_le'],
+        'icmp_code','icmp_seq','frame_length','data','date','time','icmp_ident_be','icmp_ident_le'],
 
         "ipv6" : ['frame','protocol','source_ip','dest_ip','frame_length'\
-        ,'source_port','dest_port','ipv6_source_ip','ipvs_dst_ip','date','time']
+        ,'source_port','dest_port','ipv6_source_ip','ipvs_dst_ip','data','date','time']
         }
 
 tsharkCmds = {
         "tcp" : 'tshark -tud -n -r %s -T fields -e frame.number -e ip.proto -e frame.time -e \
-        ip.src -e tcp.srcport -e ip.dst -e tcp.dstport -e frame.len -e tcp.flags tcp and not "(ipv6 or icmp)" > %s',
+        ip.src -e tcp.srcport -e ip.dst -e tcp.dstport -e frame.len -e tcp.flags -e data tcp and not "(ipv6 or icmp)" > %s',
 
         "udp" : 'tshark -tud -n -r %s -T fields -e frame.number -e ip.proto -e frame.time -e \
-        ip.src -e udp.srcport -e ip.dst -e udp.dstport -e frame.len udp and not "(ipv6 or icmp)" > %s',
+        ip.src -e udp.srcport -e ip.dst -e udp.dstport -e frame.len -e col.Info -e data udp and not "(ipv6 or icmp)" > %s',
 
         "icmp" : 'tshark -tud -n -r %s -T fields -e frame.number -e ip.proto -e frame.time -e \
-        ip.src -e ip.dst -e icmp.type -e icmp.code -e icmp.ident -e icmp.seq -e frame.len icmp and not "(ipv6 or tcp or udp)" > %s',
+        ip.src -e ip.dst -e icmp.type -e icmp.code -e icmp.ident -e icmp.seq -e frame.len -e data icmp and not "(ipv6 or tcp or udp)" > %s',
 
         "ipv6" : 'tshark -tud -n -r %s -T fields -e frame.number -e ip.proto -e frame.time -e \
-        ip.src -e ip.dst -e frame.len -e udp.srcport -e udp.dstport -e ipv6.src -e ipv6.dst ipv6 > %s'
+        ip.src -e ip.dst -e frame.len -e udp.srcport -e udp.dstport -e ipv6.src -e ipv6.dst -e data ipv6 > %s'
         }
 
 def ExtractPcapData(pcap,protocol):
@@ -68,6 +68,7 @@ def ExtractPcapData(pcap,protocol):
 
     outputFileName = "%s_%s.txt" % (pcap.split(".")[0],protocol.upper())
     tsharkBaseCmd = tsharkCmds.get(protocol)
+    # import pdb ; pdb.set_trace()
     execTsharkCmd = tsharkBaseCmd % (pcap,outputFileName)
     b = os.popen(execTsharkCmd).read()
 
@@ -88,10 +89,11 @@ def CreateCsv(outputFileName,protocol,convertTime):
 
         for entry in data:
             entry = entry.split('\t')
+
             try:
                 timestamp = parser.parse(entry[2].split('.')[0]).strftime("%Y-%m-%d %H:%M:%S")
             except:
-                continue
+                import pdb ; pdb.set_trace()
 
             if convertTime:
                 timestamp = str(getUtc(date2epoch(timestamp))) #Convert timestamp to UTC to match alerts
@@ -105,13 +107,13 @@ def CreateCsv(outputFileName,protocol,convertTime):
 
             if protocol == "icmp":
                 try:
-                    seqBE,seqLE = entry[-5].split(',')
+                    identBE,identLE = entry[-6].split(',')
                 except:
-                    seqBE,seqLE = ("NA","NA")
+                    identBE,identLE = ("NA","NA")
 
-                del entry[-5] #ICMP
-                entry.append(seqBE) #ICMP
-                entry.append(seqLE) #ICMP
+                del entry[-6] #ICMP
+                entry.append(identBE) #ICMP
+                entry.append(identLE) #ICMP
 
             csvEntry = dict(zip(csvFields,entry)) #mode line for automation
             writer.writerow(csvEntry)
@@ -144,9 +146,9 @@ def main():
     args = aParser.parse_args()
     pcap = args.pcap
     protocol = args.protocol
-    protocol = protocol.lower()
     convertTime = args.utc
     sframe = args.sframe
+
     outputFileName = ExtractPcapData(pcap,protocol)
     csvFileName = CreateCsv(outputFileName,protocol,convertTime)
     CreateDataFrame(csvFileName,protocol,sframe)
