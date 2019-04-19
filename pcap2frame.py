@@ -3,12 +3,13 @@
 """ 
     Name:   Pcap2Frame
     Author: Ramece Cave
-    Email:  rrcave@n00dle.org
+    Email:  rrcave@threatmine.io
     
     License: BSD
     
-    Copyright (c) 2016 Ramece Cave
+    Copyright (c) 2016,2019 Ramece Cave
     All rights reserved.
+
     Redistribution and use in source and binary forms, with or without modification, are permitted      
     provided that the following conditions are met:
     Redistributions of source code must retain the above copyright notice, this list of conditions 
@@ -26,9 +27,12 @@
     DAMAGE.
 """
 
+#__version__ = 1.1
+
 from dateutil import parser
 from datetime import datetime
-import csv,argparse,time,os
+from StringIO import StringIO
+import csv,argparse,time,os,sys
 
 #lambdas
 dat = lambda: time.strftime("%Y-%m-%d %H:%M:%S")
@@ -50,26 +54,30 @@ protocolFields = {
         }
 
 tsharkCmds = {
-        "tcp" : 'tshark -tud -n -r %s -T fields -e frame.number -e ip.proto -e frame.time -e \
+        "tcp" : 'tshark -tud -n -r %s -E separator=/t -T fields -e frame.number -e ip.proto -e frame.time -e \
         ip.src -e tcp.srcport -e ip.dst -e tcp.dstport -e frame.len -e tcp.flags -e data tcp and not "(ipv6 or icmp)" > %s',
 
-        "udp" : 'tshark -tud -n -r %s -T fields -e frame.number -e ip.proto -e frame.time -e \
-        ip.src -e udp.srcport -e ip.dst -e udp.dstport -e frame.len -e col.Info -e data udp and not "(ipv6 or icmp)" > %s',
+        "udp" : 'tshark -tud -n -r %s -E separator=/t -T fields -e frame.number -e ip.proto -e frame.time -e \
+        ip.src -e udp.srcport -e ip.dst -e udp.dstport -e frame.len -e _ws.col.Info -e data udp and not "(ipv6 or icmp)" > %s',
 
-        "icmp" : 'tshark -tud -n -r %s -T fields -e frame.number -e ip.proto -e frame.time -e \
+        "icmp" : 'tshark -tud -n -r %s -E separator=/t -T fields -e frame.number -e ip.proto -e frame.time -e \
         ip.src -e ip.dst -e icmp.type -e icmp.code -e icmp.ident -e icmp.seq -e frame.len -e data icmp and not "(ipv6 or tcp or udp)" > %s',
 
-        "ipv6" : 'tshark -tud -n -r %s -T fields -e frame.number -e ip.proto -e frame.time -e \
+        "ipv6" : 'tshark -tud -n -r %s -E separator=/t -T fields -e frame.number -e ip.proto -e frame.time -e \
         ip.src -e ip.dst -e frame.len -e udp.srcport -e udp.dstport -e ipv6.src -e ipv6.dst -e data ipv6 > %s'
         }
+
+#The info column name seems to change depending on tshark version.
+#_ws.col.Info
+#col.Info
 
 def ExtractPcapData(pcap,protocol):
     print dat(),"Processing:",pcap
 
     outputFileName = "%s_%s.txt" % (pcap.split(".")[0],protocol.upper())
     tsharkBaseCmd = tsharkCmds.get(protocol)
-    # import pdb ; pdb.set_trace()
     execTsharkCmd = tsharkBaseCmd % (pcap,outputFileName)
+
     b = os.popen(execTsharkCmd).read()
 
     return outputFileName
@@ -93,7 +101,8 @@ def CreateCsv(outputFileName,protocol,convertTime):
             try:
                 timestamp = parser.parse(entry[2].split('.')[0]).strftime("%Y-%m-%d %H:%M:%S")
             except:
-                import pdb ; pdb.set_trace()
+                print "There is a problem processing PCAP. If the error occured while processing UDP packets, try upgrading tshark."
+                sys.exit()
 
             if convertTime:
                 timestamp = str(getUtc(date2epoch(timestamp))) #Convert timestamp to UTC to match alerts
@@ -105,6 +114,12 @@ def CreateCsv(outputFileName,protocol,convertTime):
             entry.append(eventDate)
             entry.append(eventTime)
 
+            if (protocol == "udp") and (len(csvFields) != len(entry)):
+                #No data found in packet
+                entry.insert(8,'')
+            else:
+                pass
+
             if protocol == "icmp":
                 try:
                     identBE,identLE = entry[-6].split(',')
@@ -114,6 +129,12 @@ def CreateCsv(outputFileName,protocol,convertTime):
                 del entry[-6] #ICMP
                 entry.append(identBE) #ICMP
                 entry.append(identLE) #ICMP
+
+                if len(csvFields) != len(entry):
+                    #No data found in packet. This will probably never happen, but just in case.
+                    entry.insert(8,'')
+                else:
+                    pass
 
             csvEntry = dict(zip(csvFields,entry)) #mode line for automation
             writer.writerow(csvEntry)
@@ -132,7 +153,7 @@ def CreateDataFrame(csvFileName,protocol,sframe):
         import pandas
 
         frameName = csvFileName.replace(".csv",".PANDAS")
-        pDataframe = pandas.DataFrame.from_csv(csvFileName) #create pandas dataframe
+        pDataframe = pandas.read_csv(csvFileName).fillna('N/A') #create pandas dataframe
         pDataframe.to_pickle(frameName) #save pandas dataframe
         print dat(),"Creating:",frameName
 
@@ -142,6 +163,7 @@ def main():
     aParser.add_argument("--protocol",help="tcp,udp,icmp or ipv6",required=True)
     aParser.add_argument("--utc",help="convert timestamps to UTC",required=False,action="store_true")
     aParser.add_argument("--sframe",help="PANDAS (default) or SFRAME",required=False,action="store_true")
+    aParser.add_argument("--pcap2json",help="Convert packets to JSON",required=False,action="store_true")
 
     args = aParser.parse_args()
     pcap = args.pcap
