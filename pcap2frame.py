@@ -163,7 +163,6 @@ def main():
     aParser.add_argument("--protocol",help="tcp,udp,icmp or ipv6",required=True)
     aParser.add_argument("--utc",help="convert timestamps to UTC",required=False,action="store_true")
     aParser.add_argument("--sframe",help="PANDAS (default) or SFRAME",required=False,action="store_true")
-    aParser.add_argument("--pcap2json",help="Convert packets to JSON",required=False,action="store_true")
 
     args = aParser.parse_args()
     pcap = args.pcap
